@@ -18,7 +18,6 @@ from data.combined_dataset import CombinedXrayDataset
 from models.model import XrayMultimodalModel
 from utils.losses import FocalLoss
 
-# 降低 transformers 的日志级别
 transformers_logging.set_verbosity_error()
 transformers_logging.disable_progress_bar()
 
@@ -160,7 +159,7 @@ def main():
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.num_epochs)
     writer = SummaryWriter(log_dir=log_dir)
 
-    # 是否从最新检查点继续训练（按时间最新的 best_epoch_*.pth）
+
     start_epoch = 1
     best_val_acc = 0.0
     resume_pattern = os.path.join(checkpoint_dir, "best_epoch_*.pth")
@@ -170,7 +169,7 @@ def main():
         print("Resuming from latest checkpoint:", latest_ckpt)
         ckpt = torch.load(latest_ckpt, map_location=device)
         state = ckpt.get("model_state_dict", ckpt)
-        # DataParallel 期望 module. 前缀；若 checkpoint 无此前缀则补充
+
         if n_gpu > 1 and not any(k.startswith("module.") for k in state.keys()):
             state = {f"module.{k}": v for k, v in state.items()}
         elif n_gpu <= 1 and any(k.startswith("module.") for k in state.keys()):
@@ -211,7 +210,7 @@ def main():
         if val_acc > best_val_acc or epoch == cfg.num_epochs:
             best_val_acc = val_acc
             path = os.path.join(checkpoint_dir, f"best_epoch_{epoch}.pth")
-            # 保存时去掉 module. 前缀，便于单卡 test 加载
+
             state_to_save = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
             torch.save(
                 {
