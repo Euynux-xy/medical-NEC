@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# 数据与模型（勿提交到仓库）
+checkpoints/
+logs/
+*.pth
+models/clip/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
