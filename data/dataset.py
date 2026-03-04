@@ -14,6 +14,9 @@ from transformers import CLIPTokenizer
 
 from config import Config
 
+CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
+CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
+
 
 class XrayDataset(Dataset):
     """单类别 X 光多模态数据集"""
@@ -75,45 +78,40 @@ class XrayDataset(Dataset):
             print("回退到 transformers 默认行为（可能会尝试联网下载 tokenizer）")
             self.tokenizer = CLIPTokenizer.from_pretrained(cfg.clip_model_name)
         
-        # 图像预处理
+        # 图像预处理（与 CLIP 预训练分布对齐）
         if is_train:
             self.transform_main = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
                 transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomVerticalFlip(p=0.3),
                 transforms.RandomRotation(degrees=10),
                 transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+                transforms.ColorJitter(brightness=0.15, contrast=0.15),
                 transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5)),
                 transforms.ToTensor(),
                 transforms.RandomErasing(p=0.2, scale=(0.02, 0.33), ratio=(0.3, 3.3)),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=CLIP_MEAN, std=CLIP_STD)
             ])
             self.transform_local = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomVerticalFlip(p=0.3),
                 transforms.RandomRotation(degrees=10),
                 transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+                transforms.ColorJitter(brightness=0.15, contrast=0.15),
                 transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5)),
                 transforms.ToTensor(),
                 transforms.RandomErasing(p=0.2, scale=(0.02, 0.33), ratio=(0.3, 3.3)),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=CLIP_MEAN, std=CLIP_STD)
             ])
         else:
             self.transform_main = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=CLIP_MEAN, std=CLIP_STD)
             ])
             self.transform_local = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=CLIP_MEAN, std=CLIP_STD)
             ])
     
     def __len__(self) -> int:
@@ -160,19 +158,22 @@ class XrayDataset(Dataset):
         main_image = self.transform_main(main_image)
         local_image = self.transform_local(local_image)
         
-        text_tokens = self.tokenizer(
+        text_inputs = self.tokenizer(
             description,
             padding="max_length",
             max_length=77,
             truncation=True,
             return_tensors="pt"
-        )["input_ids"].squeeze(0)
+        )
+        text_tokens = text_inputs["input_ids"].squeeze(0)
+        text_attention_mask = text_inputs["attention_mask"].squeeze(0)
         
         result = {
             "main_image": main_image,
             "local_image": local_image,
             "text": description,
             "text_tokens": text_tokens,
+            "text_attention_mask": text_attention_mask,
             "item": image_name
         }
         

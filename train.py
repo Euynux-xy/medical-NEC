@@ -4,7 +4,9 @@
 import gc
 import glob
 import os
+import random
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -29,9 +31,15 @@ def train_epoch(model, loader, criterion, optimizer, device):
         main = batch["main_image"].to(device)
         local = batch["local_image"].to(device)
         text = batch["text_tokens"].to(device)
+        text_attention_mask = batch["text_attention_mask"].to(device)
         label = batch["label"].to(device)
         optimizer.zero_grad()
-        logits = model(main_image=main, local_image=local, text_tokens=text)
+        logits = model(
+            main_image=main,
+            local_image=local,
+            text_tokens=text,
+            text_attention_mask=text_attention_mask,
+        )
         loss = criterion(logits, label)
         loss.backward()
         optimizer.step()
@@ -50,8 +58,14 @@ def validate(model, loader, criterion, device):
             main = batch["main_image"].to(device)
             local = batch["local_image"].to(device)
             text = batch["text_tokens"].to(device)
+            text_attention_mask = batch["text_attention_mask"].to(device)
             label = batch["label"].to(device)
-            logits = model(main_image=main, local_image=local, text_tokens=text)
+            logits = model(
+                main_image=main,
+                local_image=local,
+                text_tokens=text,
+                text_attention_mask=text_attention_mask,
+            )
             loss = criterion(logits, label)
             total_loss += loss.item()
             pred = logits.argmax(dim=1)
@@ -63,9 +77,14 @@ def validate(model, loader, criterion, device):
 
 def main():
     cfg = Config()
+    cfg.num_classes = len(cfg.class_names)
+    random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(cfg.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     device = torch.device(cfg.device)
     n_gpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
@@ -109,14 +128,14 @@ def main():
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
     )
 
     model = XrayMultimodalModel(
@@ -147,7 +166,7 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
     # Warmup + CosineAnnealing
     warmup_epochs = min(cfg.warmup_epochs, cfg.num_epochs)
-    if warmup_epochs > 0:
+    if warmup_epochs > 0 and warmup_epochs < cfg.num_epochs:
         warmup = optim.lr_scheduler.LinearLR(
             optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
         )
@@ -155,6 +174,10 @@ def main():
             optimizer, T_max=cfg.num_epochs - warmup_epochs
         )
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, [warmup, cosine], [warmup_epochs])
+    elif warmup_epochs == cfg.num_epochs and warmup_epochs > 0:
+        scheduler = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
+        )
     else:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.num_epochs)
     writer = SummaryWriter(log_dir=log_dir)

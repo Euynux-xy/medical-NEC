@@ -51,9 +51,8 @@ class VisionEncoder(nn.Module):
         self.feature_dim = backbone.config.hidden_size
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-
-        model_to_call = getattr(self.backbone, "model", self.backbone)
-        out = model_to_call(pixel_values=pixel_values)
+        # 直接走 self.backbone，确保 PEFT/LoRA 前向钩子生效
+        out = self.backbone(pixel_values=pixel_values)
         return out.last_hidden_state
 
     def get_trainable_params(self):

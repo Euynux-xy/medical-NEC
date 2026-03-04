@@ -54,6 +54,7 @@ def load_model(path, device, cfg):
 
 def main():
     cfg = Config()
+    cfg.num_classes = len(cfg.class_names)
     device = torch.device(cfg.device)
 
     test_ds = CombinedXrayDataset(
@@ -71,7 +72,7 @@ def main():
         batch_size=cfg.batch_size, 
         shuffle=False, 
         num_workers=cfg.num_workers,
-        pin_memory=True
+        pin_memory=torch.cuda.is_available()
     )
 
     checkpoint_dir = cfg.checkpoint_dir
@@ -116,9 +117,15 @@ def main():
             main_img = batch["main_image"].to(device)
             local_img = batch["local_image"].to(device)
             text = batch["text_tokens"].to(device)
+            text_attention_mask = batch["text_attention_mask"].to(device)
             label = batch["label"]
             
-            logits = model(main_image=main_img, local_image=local_img, text_tokens=text)
+            logits = model(
+                main_image=main_img,
+                local_image=local_img,
+                text_tokens=text,
+                text_attention_mask=text_attention_mask,
+            )
             pred = logits.argmax(dim=1).cpu().numpy()
             
             all_pred.extend(pred)

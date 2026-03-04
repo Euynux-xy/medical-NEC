@@ -86,6 +86,7 @@ class XrayMultimodalModel(nn.Module):
         main_image: torch.Tensor,
         local_image: torch.Tensor,
         text_tokens: torch.Tensor,
+        text_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         main_image / local_image: (B, 3, H, W)
@@ -97,7 +98,7 @@ class XrayMultimodalModel(nn.Module):
         visual_seq = torch.cat([global_feat, local_feat], dim=1)
         visual_seq = self.vision_proj(visual_seq)
 
-        text_seq = self.text_encoder(text_tokens)
+        text_seq = self.text_encoder(text_tokens, attention_mask=text_attention_mask)
         text_seq = self.text_proj(text_seq)
 
         visual_sel = self.dpp(visual_seq, text_seq)
